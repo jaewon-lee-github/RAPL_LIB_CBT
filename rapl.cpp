@@ -319,7 +319,6 @@ void rapl::measure_energy_thread()
 	long long diff=0;
 	FILE *fff;
 	/* Gather current values */
-	//cout << "count =" << count << endl;;
 	for(j=0;j<total_packages;j++) {
 		for(i=0;i<NUM_RAPL_DOMAINS;i++) {
 			if (valid[j][i]) {
@@ -342,8 +341,6 @@ void rapl::measure_energy_thread()
 				//diff = ((double)after[j][i]-(double)before[j][i])/1000000.0;
 				diff = after[j][i]-before[j][i];
 				sum[j][i] += diff;
-				printf("\t\t%s\t: %lfuJ(avg: %lfuJ))\n",event_names[j][i],diff,sum[j][i]/(double)count);
-				printf("\t\t%s\t: %lli uJ(avg: %lli uJ)\n",event_names[j][i],diff,sum[j][i]/count);
 				//fprintf(ofile,"%10lli,",diff);
 				fprintf(ofile,"%lli,",diff);
 			}
