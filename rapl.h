@@ -105,6 +105,7 @@
 #define CPU_VENDOR_INTEL	1
 #define CPU_VENDOR_AMD		2
 
+#define CPU_ALDERLAKE_S		151
 #define CPU_SANDYBRIDGE		42
 #define CPU_SANDYBRIDGE_EP	45
 #define CPU_IVYBRIDGE		58
@@ -134,6 +135,13 @@
 
 #define CPU_AMD_FAM17H		0xc000
 
+#ifdef DEBUG
+#define debug_printf(...) printf(__VA_ARGS__)
+#else
+#define debug_printf(...) ((void)0)
+#endif
+
+
 using namespace std;
 
 
@@ -148,7 +156,7 @@ using namespace std;
 #define NUM_RAPL_DOMAINS	5
 
 #ifndef RAPL_INTERVAL
-#define RAPL_INTERVAL 1
+#define RAPL_INTERVAL 10
 #endif
 class CallBackTimer
 {
@@ -181,24 +189,23 @@ class rapl{
 		void measure_start();
 		void measure_stop();
 		void measure_energy_thread();
-		rapl(const char * bench_name, int interval){
-			this->interval = interval;
-			total_cores=0,total_packages=0; 
-			CBT = new CallBackTimer();
-			cpu_model=detect_cpu();
-			detect_packages();
-			measure_init();
-			strncpy(name,bench_name,sizeof(name));
-		}
-		~rapl(){
-			delete CBT;
-		}
+		rapl();
+		~rapl();
 
 	private:
-		int interval;
+	    int _device_id;
+		int _min_freq;
+		int _max_freq;
+		int _step_freq;
+		char name[128];
+		int _sampling_interval;
+		int _reset_interval;
+		int _freq_mode;
+ 	    int _bin_policy;
+
+		int start_flag;
 		CallBackTimer *CBT;
 		int cpu_model;
-		char name[128];
 		unsigned int msr_rapl_units,msr_pkg_energy_status,msr_pp0_energy_status;
 
 		//variable for measurement
@@ -207,6 +214,7 @@ class rapl{
 		char event_names[MAX_PACKAGES][NUM_RAPL_DOMAINS][256];
 		char filenames[MAX_PACKAGES][NUM_RAPL_DOMAINS][256];
 		char basename[MAX_PACKAGES][256];
+		char freq_name[256];
 		FILE *ofile;
 		long long before[MAX_PACKAGES][NUM_RAPL_DOMAINS];
 		long long after[MAX_PACKAGES][NUM_RAPL_DOMAINS];

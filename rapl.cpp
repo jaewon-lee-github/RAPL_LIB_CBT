@@ -30,7 +30,7 @@ void CallBackTimer::stop()
 	_execute.store(false, std::memory_order_release);
 	if( _thd.joinable() )
 		_thd.join();
-	//cout << "Thread stop!"<<endl;
+	debug_printf("CBT stop!\n");
 }
 
 //void start(int interval, std::function<void(void)> func)
@@ -39,7 +39,7 @@ void CallBackTimer::start(int interval, std::function<void(void)> func)
 	if( _execute.load(std::memory_order_acquire) ) {
 		stop();
 	};
-	//cout << "Thread start!"<<endl;
+	debug_printf("CBT Start!\n");
 
 	_execute.store(true, std::memory_order_release);
 
@@ -56,6 +56,56 @@ void CallBackTimer::start(int interval, std::function<void(void)> func)
 bool CallBackTimer::is_running() const noexcept {
 	return ( _execute.load(std::memory_order_acquire) && 
 			_thd.joinable() );
+}
+
+rapl::rapl(){
+    const char *envVarValue = std::getenv("BENCH_NAME");
+
+    if (envVarValue != NULL)
+    {
+        strncpy(name, envVarValue, sizeof(name));
+    }
+    else
+    {
+        strncpy(name, "unknown", sizeof(name));
+    }
+    debug_printf("BENCH_NAME= %s\n", name);
+	_device_id=0;
+	_min_freq=0;
+	_max_freq=0;
+	_step_freq=0;
+	_reset_interval=0;
+	_freq_mode=0;
+ 	_bin_policy=0;
+
+    // _device_id = std::atoi(getenv("DEVICES_ID")); 
+    // debug_printf("device = %d\n", target_device);
+    // _freq_mode = std::atoi(getenv("FREQ_MODE"));
+    // debug_printf("freq_mode= %d\n", _freq_mode);
+    // _bin_policy = std::atoi(getenv("BIN_POLICY"));
+    // debug_printf("bin_policy= %d\n", _bin_policy);
+    // _min_freq = std::atoi(getenv("MIN_FREQ"));
+    // debug_printf("min_freqw= %d\n", _min_freq);
+    // _max_freq = std::atoi(getenv("MAX_FREQ"));
+    // debug_printf("max_freqw= %d\n", _max_freq);
+    // _step_freq = std::atoi(getenv("STEP_FREQ"));
+    // debug_printf("step_freq= %d\n", _step_freq);
+    _sampling_interval = std::atoi(getenv("SAMPLING_INTERVAL"));
+    debug_printf("sampling interval= %d\n", _sampling_interval);
+    // _reset_interval = std::atoi(getenv("RESET_INTERVAL"));
+    // debug_printf("reset_interval= %d\n", _reset_interval);
+
+    start_flag = 0;
+	total_cores=0,total_packages=0; 
+	CBT = new CallBackTimer();
+	cpu_model=detect_cpu();
+	detect_packages();
+	measure_init();
+}
+
+rapl::~rapl(){
+	delete CBT;	
+
 }
 
 
@@ -105,11 +155,11 @@ int rapl::detect_cpu(void) {
 		msr_pkg_energy_status=MSR_INTEL_PKG_ENERGY_STATUS;
 		msr_pp0_energy_status=MSR_INTEL_PP0_ENERGY_STATUS;
 
-		printf("Found ");
+		debug_printf("Found ");
 
 		switch(model) {
 			case CPU_SANDYBRIDGE:
-				printf("Sandybridge");
+				debug_printf("Sandybridge");
 				break;
 			case CPU_SANDYBRIDGE_EP:
 				printf("Sandybridge-EP");
@@ -157,8 +207,11 @@ int rapl::detect_cpu(void) {
 			case CPU_ATOM_DENVERTON:
 				printf("Atom");
 				break;
+			case CPU_ALDERLAKE_S:
+				debug_printf("Alder Lake S");
+				break;
 			default:
-				printf("Unsupported model %d\n",model);
+				debug_printf("Unsupported model %d\n",model);
 				model=-1;
 				break;
 		}
@@ -171,7 +224,7 @@ int rapl::detect_cpu(void) {
 		msr_pp0_energy_status=MSR_AMD_PP0_ENERGY_STATUS;
 
 		if (family!=23) {
-			printf("Wrong CPU family %d\n",family);
+			debug_printf("Wrong CPU family %d\n",family);
 			return -1;
 		}
 		model=CPU_AMD_FAM17H;
@@ -179,7 +232,7 @@ int rapl::detect_cpu(void) {
 
 	fclose(fff);
 
-	printf(" Processor type\n");
+	debug_printf(" Processor type\n");
 
 	return model;
 }
@@ -190,14 +243,14 @@ int rapl::detect_packages(void) {
 	int i;
 	for(i=0;i<MAX_PACKAGES;i++) package_map[i]=-1;
 
-	printf("\t");
+	debug_printf("\t");
 	for(i=0;i<MAX_CPUS;i++) {
 		sprintf(filename,"/sys/devices/system/cpu/cpu%d/topology/physical_package_id",i);
 		fff=fopen(filename,"r");
 		if (fff==NULL) break;
 		fscanf(fff,"%d",&package);
-		printf("%d (%d)",i,package);
-		if (i%8==7) printf("\n\t"); else printf(", ");
+		debug_printf("%d (%d)",i,package);
+		if (i%8==7) debug_printf("\n\t"); else debug_printf(", ");
 		fclose(fff);
 
 		if (package_map[package]==-1) {
@@ -206,9 +259,9 @@ int rapl::detect_packages(void) {
 		}
 
 	}
-	printf("\n");
+	debug_printf("\n");
 	total_cores=i;
-	printf("\tDetected %d cores in %d packages\n\n",
+	debug_printf("\tDetected %d cores in %d packages\n\n",
 			total_cores,total_packages);
 	return 0;
 }
@@ -217,7 +270,7 @@ void rapl::measure_init()
 	int i,j;
 	FILE *fff;
 	char tempfile[256];
-	printf("\nTrying sysfs powercap interface to gather results\n\n");
+	// printf("\nTrying sysfs powercap interface to gather results\n\n");
 	//cout << "total_packages="<<total_packages <<endl;
 
 	/* /sys/class/powercap/intel-rapl/intel-rapl:0/ */
@@ -225,10 +278,13 @@ void rapl::measure_init()
 	/* energy_uj has energy */
 	/* subdirectories intel-rapl:0:0 intel-rapl:0:1 intel-rapl:0:2 */
 
+	strncpy(freq_name,"/sys/devices/pci0000:00/0000:00:02.0/drm/card0/gt_cur_freq_mhz",sizeof(freq_name));
+	debug_printf("freq_name=%s\n", freq_name);
 	for(j=0;j<total_packages;j++) {
 		i=0;
 		sprintf(basename[j],"/sys/class/powercap/intel-rapl/intel-rapl:%d",
 			j);
+
 		sprintf(tempfile,"%s/name",basename[j]);
 		fff=fopen(tempfile,"r");
 		if (fff==NULL) {
@@ -279,13 +335,14 @@ void rapl::measure_init()
 
 void rapl::measure_start()
 {
-	//rapl.CBT->start(rapl.interval,[&rapl](void){rapl.measure_energy_thread();});
 	static int restart = 0;
 	char temp[256];
 	int i,j;
-	sprintf(temp,"output_%s_%dms",name,interval);
+	sprintf(temp,"output_%d_%d_%d_%d_%d_%d_%s_%d_%d.csv",
+		_device_id, _freq_mode, _bin_policy, _min_freq, _max_freq, _step_freq, name, _sampling_interval, _reset_interval);
 	if (restart == 0)
 	{
+		debug_printf("Measure start\n");
 		ofile=fopen(temp,"w");
 		for(j=0;j<total_packages;j++) {
 			for(i=0;i<NUM_RAPL_DOMAINS;i++) {
@@ -300,24 +357,28 @@ void rapl::measure_start()
 	}
 	else 
 	{
-		cout << "Measure restart" << endl;
+		debug_printf("Measure restart\n");
 		ofile=fopen(temp,"a");
 	}
-	cout << "Measure start" << endl;
-	CBT->start(interval,[this](void){this->measure_energy_thread();});
+	CBT->start(_sampling_interval,[this](void){this->measure_energy_thread();});
+	debug_printf("Measure_start ends\n");
 }
 void rapl::measure_stop()
 {
 	CBT->stop();
 	fclose(ofile);
-	cout << "Measure stop" << endl;
+	debug_printf("Measure stop\n");
 }
 
 void rapl::measure_energy_thread()
 {
 	int i,j;
-	long long diff=0;
-	FILE *fff;
+	static bool isStart = false;
+	double diff=0.0;
+	long cur_freq = 0;
+	FILE *fff, *freq;
+	debug_printf("Measure_energy_thread start\n");
+
 	/* Gather current values */
 	for(j=0;j<total_packages;j++) {
 		for(i=0;i<NUM_RAPL_DOMAINS;i++) {
@@ -333,21 +394,40 @@ void rapl::measure_energy_thread()
 			}
 		}
 	}
+	debug_printf("Calculate difference \n");
 
 	for(j=0;j<total_packages;j++) {
 		//printf("\tPackage %d\n",j);
 		for(i=0;i<NUM_RAPL_DOMAINS;i++) {
 			if (valid[j][i]) {
-				//diff = ((double)after[j][i]-(double)before[j][i])/1000000.0;
-				diff = after[j][i]-before[j][i];
-				sum[j][i] += diff;
+				diff = ((double)after[j][i]-(double)before[j][i])/(_sampling_interval);
+				// diff = after[j][i]-before[j][i];
+				sum[j][i] =(double)after[j][i];
 				//fprintf(ofile,"%10lli,",diff);
-				fprintf(ofile,"%lli,",diff);
+				if (isStart == true)
+					fprintf(ofile,"%f,",diff);
 			}
 		}
-		fseek (ofile , -1 , SEEK_CUR);
+	}
+	if (isStart == true)
+	{
+		debug_printf("Read Frequency\n");
+		freq= fopen(freq_name,"r");
+		fscanf(freq,"%ld",&cur_freq);
+		fclose(freq);
+
+		debug_printf("Write %ld from %s to outfile \n",cur_freq, freq_name );
+		fprintf(ofile,"%ld",cur_freq);
+		//fseek (ofile , -1 , SEEK_CUR);
 		fprintf(ofile,"\n");
 	}
-	memcpy(before, after, sizeof before);
+	else
+	{
+		debug_printf("Set isStart\n");
+		isStart = true;
+	}
+
+	memcpy(before, after, sizeof(before));
+	debug_printf("Measure_energy_thread Ends \n");
 }
 
