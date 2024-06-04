@@ -59,41 +59,60 @@ bool CallBackTimer::is_running() const noexcept {
 }
 
 rapl::rapl(){
-    const char *envVarValue = std::getenv("BENCH_NAME");
-
-    if (envVarValue != NULL)
-    {
-        strncpy(name, envVarValue, sizeof(name));
-    }
-    else
-    {
-        strncpy(name, "unknown", sizeof(name));
-    }
+	if (getenv("BENCH_NAME") != NULL)
+		strncpy(name, getenv("BENCH_NAME"), sizeof(name));
+	else
+		strncpy(name, "unknown", sizeof(name));
     debug_printf("BENCH_NAME= %s\n", name);
-	_device_id=0;
-	_min_freq=0;
-	_max_freq=0;
-	_step_freq=0;
-	_reset_interval=0;
-	_freq_mode=0;
- 	_bin_policy=0;
 
-    // _device_id = std::atoi(getenv("DEVICES_ID")); 
-    // debug_printf("device = %d\n", target_device);
-    // _freq_mode = std::atoi(getenv("FREQ_MODE"));
-    // debug_printf("freq_mode= %d\n", _freq_mode);
-    // _bin_policy = std::atoi(getenv("BIN_POLICY"));
-    // debug_printf("bin_policy= %d\n", _bin_policy);
-    // _min_freq = std::atoi(getenv("MIN_FREQ"));
-    // debug_printf("min_freqw= %d\n", _min_freq);
-    // _max_freq = std::atoi(getenv("MAX_FREQ"));
-    // debug_printf("max_freqw= %d\n", _max_freq);
-    // _step_freq = std::atoi(getenv("STEP_FREQ"));
-    // debug_printf("step_freq= %d\n", _step_freq);
-    _sampling_interval = std::atoi(getenv("SAMPLING_INTERVAL"));
+	if (getenv("DEVICES_ID") != NULL)
+    	_device_id = std::atoi(getenv("DEVICES_ID")); 
+	else
+		_device_id = 0;
+    debug_printf("device_id = %d\n", _device_id);
+
+	if (getenv("FREQ_MODE") != NULL)
+		_freq_mode = std::atoi(getenv("FREQ_MODE"));
+	else
+		_freq_mode = 0;
+    debug_printf("freq_mode= %d\n", _freq_mode);
+
+	if (getenv("BIN_POLICY") != NULL)
+    	_bin_policy = std::atoi(getenv("BIN_POLICY"));
+	else
+		_bin_policy = 0;
+    debug_printf("bin_policy= %d\n", _bin_policy);
+
+	if (getenv("MIN_FREQ") != NULL)
+    	_min_freq = std::atoi(getenv("MIN_FREQ"));
+	else
+		_min_freq = 0;
+    debug_printf("min_freqw= %d\n", _min_freq);
+
+	if (getenv("MAX_FREQ") != NULL)
+		_max_freq = std::atoi(getenv("MAX_FREQ"));
+	else
+		_max_freq = 0;
+    debug_printf("max_freqw= %d\n", _max_freq);
+
+	if (getenv("STEP_FREQ") != NULL)
+		_step_freq = std::atoi(getenv("STEP_FREQ"));
+	else
+		_step_freq = 0;
+    debug_printf("step_freq= %d\n", _step_freq);
+
+	if (getenv("SAMPLING_INTERVAL") != NULL)
+    	_sampling_interval = std::atoi(getenv("SAMPLING_INTERVAL"));
+	else
+		_sampling_interval = 0;
     debug_printf("sampling interval= %d\n", _sampling_interval);
-    // _reset_interval = std::atoi(getenv("RESET_INTERVAL"));
-    // debug_printf("reset_interval= %d\n", _reset_interval);
+
+	if (getenv("RESET_INTERVAL") != NULL)
+		_reset_interval = std::atoi(getenv("RESET_INTERVAL"));
+	else
+		_reset_interval = 0;
+    debug_printf("reset_interval= %d\n", _reset_interval);
+
 
     start_flag = 0;
 	total_cores=0,total_packages=0; 
@@ -344,6 +363,8 @@ void rapl::measure_start()
 	{
 		debug_printf("Measure start\n");
 		ofile=fopen(temp,"w");
+		// CSV file header
+		fprintf(ofile,"Benchmark,Kernel,FreqMode,Timestamp,Freq,BinPolicy,");
 		for(j=0;j<total_packages;j++) {
 			for(i=0;i<NUM_RAPL_DOMAINS;i++) {
 				if (valid[j][i]) {
@@ -373,10 +394,10 @@ void rapl::measure_stop()
 void rapl::measure_energy_thread()
 {
 	int i,j;
-	static bool isStart = false;
+	static unsigned int num_call= 0;
 	double diff=0.0;
 	long cur_freq = 0;
-	FILE *fff, *freq;
+	FILE *fff;
 	debug_printf("Measure_energy_thread start\n");
 
 	/* Gather current values */
@@ -394,7 +415,23 @@ void rapl::measure_energy_thread()
 			}
 		}
 	}
+	if (num_call == 0)
+	{
+		debug_printf("Don't record power at the first round\n");
+		memcpy(before, after, sizeof(before));
+		num_call++;
+		return;
+	}
+	
+	debug_printf("Read Frequency\n");
+	FILE *freq;
+	freq= fopen(freq_name,"r");
+	fscanf(freq,"%ld",&cur_freq);
+	fclose(freq);
+
 	debug_printf("Calculate difference \n");
+	//fprintf(ofile,"Benchmark,Kernel,FreqMode,Timestamp,Freq,BinPolicy");
+	fprintf(ofile,"%s,%s,%d,%d,%d,%d,",name,"",_freq_mode,num_call-1,cur_freq,_bin_policy);
 
 	for(j=0;j<total_packages;j++) {
 		//printf("\tPackage %d\n",j);
@@ -404,30 +441,15 @@ void rapl::measure_energy_thread()
 				// diff = after[j][i]-before[j][i];
 				sum[j][i] =(double)after[j][i];
 				//fprintf(ofile,"%10lli,",diff);
-				if (isStart == true)
-					fprintf(ofile,"%f,",diff);
+				fprintf(ofile,"%f,",diff);
 			}
 		}
 	}
-	if (isStart == true)
-	{
-		debug_printf("Read Frequency\n");
-		freq= fopen(freq_name,"r");
-		fscanf(freq,"%ld",&cur_freq);
-		fclose(freq);
-
-		debug_printf("Write %ld from %s to outfile \n",cur_freq, freq_name );
-		fprintf(ofile,"%ld",cur_freq);
-		//fseek (ofile , -1 , SEEK_CUR);
-		fprintf(ofile,"\n");
-	}
-	else
-	{
-		debug_printf("Set isStart\n");
-		isStart = true;
-	}
+	fseek (ofile , -1 , SEEK_CUR);
+	fprintf(ofile,"\n");
 
 	memcpy(before, after, sizeof(before));
+	num_call++;
 	debug_printf("Measure_energy_thread Ends \n");
 }
 

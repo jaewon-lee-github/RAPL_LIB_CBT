@@ -204,6 +204,7 @@ class rapl{
  	    int _bin_policy;
 
 		int start_flag;
+		unsigned int num_call;
 		CallBackTimer *CBT;
 		int cpu_model;
 		unsigned int msr_rapl_units,msr_pkg_energy_status,msr_pp0_energy_status;
