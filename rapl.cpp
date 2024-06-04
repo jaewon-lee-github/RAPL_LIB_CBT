@@ -104,7 +104,7 @@ rapl::rapl(){
 	if (getenv("SAMPLING_INTERVAL") != NULL)
     	_sampling_interval = std::atoi(getenv("SAMPLING_INTERVAL"));
 	else
-		_sampling_interval = 0;
+		_sampling_interval = 10;
     debug_printf("sampling interval= %d\n", _sampling_interval);
 
 	if (getenv("RESET_INTERVAL") != NULL)
@@ -431,7 +431,7 @@ void rapl::measure_energy_thread()
 
 	debug_printf("Calculate difference \n");
 	//fprintf(ofile,"Benchmark,Kernel,FreqMode,Timestamp,Freq,BinPolicy");
-	fprintf(ofile,"%s,%s,%d,%d,%d,%d,",name,"",_freq_mode,num_call-1,cur_freq,_bin_policy);
+	fprintf(ofile,"%s,%s,%d,%d,%d,%d,",name,"None",_freq_mode,num_call-1,cur_freq,_bin_policy);
 
 	for(j=0;j<total_packages;j++) {
 		//printf("\tPackage %d\n",j);
